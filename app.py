@@ -106,7 +106,7 @@ with st.sidebar:
     st.caption(f"Compute device: **{engine.device}**")
     ok, why = engine.ai_installed()
     if not ok:
-        st.error(why)
+        st.info("AI coloring packages are not installed on this host. Quick preview is available.")
     for _key, _msg in list(engine.errors.items()):
         st.warning(f"{_key}: {_msg}")
 
