@@ -1,0 +1,7 @@
+torch
+torchvision
+transformers
+diffusers>=0.30
+accelerate
+safetensors
+huggingface_hub

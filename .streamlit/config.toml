@@ -1,0 +1,7 @@
+[browser]
+gatherUsageStats = false
+
+[server]
+maxUploadSize = 1000
+# stops Streamlit's file-watcher from crashing/spamming when torch is imported
+fileWatcherType = "none"
