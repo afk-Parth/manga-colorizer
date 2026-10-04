@@ -213,15 +213,15 @@ class DiffusionColorizer:
         self.torch = torch
         dtype = getattr(torch, dtype_name)
         self.pipe = None
-        try:
-            cn = ControlNetModel.from_pretrained(self.CN, torch_dtype=dtype, variant="fp16")
-        except Exception:
-            cn = ControlNetModel.from_pretrained(self.CN, torch_dtype=dtype)
-        kw = dict(controlnet=cn, torch_dtype=dtype, safety_checker=None, requires_safety_checker=False)
-        try:
-            pipe = StableDiffusionControlNetPipeline.from_pretrained(self.BASE, variant="fp16", **kw)
-        except Exception:
-            pipe = StableDiffusionControlNetPipeline.from_pretrained(self.BASE, **kw)
+        variant = "fp16" if dtype_name == "float16" else None
+        cn = ControlNetModel.from_pretrained(
+            self.CN, torch_dtype=dtype, variant=variant, use_safetensors=True,
+        )
+        kw = dict(controlnet=cn, torch_dtype=dtype, safety_checker=None, requires_safety_checker=False,
+                  use_safetensors=True)
+        if variant:
+            kw["variant"] = variant
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(self.BASE, **kw)
         pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
         pipe.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
         if self.device == "cuda" and self.low_memory:

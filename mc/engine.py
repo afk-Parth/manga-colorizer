@@ -35,6 +35,9 @@ class Engine:
     def retry_failed(self):
         self._failed.clear()
 
+    def model_loaded(self, key: str) -> bool:
+        return key in self._obj
+
     def _get(self, key: str, factory: Callable[[], object]):
         if key in self._obj:
             return self._obj[key]

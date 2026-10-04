@@ -57,6 +57,8 @@ class Fake:
     def expander(self, *a, **k): return Ctx(self)
     def form(self, *a, **k): return Ctx(self)
     def spinner(self, *a, **k): return Ctx(self)
+    def status(self, label, **k): self.log.append("status: " + str(label)); return Ctx(self)
+    def update(self, **k): self.log.append("status update: " + str(k))
     @property
     def sidebar(self): return Ctx(self)
     def empty(self): return Ctx(self)
@@ -112,6 +114,13 @@ def main():
 
     # A: fresh start, no pages / characters, twice (rerun)
     f = Fake(); run_app(f); run_app(f); print("A fresh start OK")
+    setup_engine = run_app(f)["engine"]
+    setup_engine.inject("diffusion", object())
+    f.pressed = {"Prepare AI models"}
+    run_app(f)
+    assert any("AI coloring model is ready" in entry for entry in f.log), f.log
+    f.pressed = set()
+    print("AI model setup status OK")
     isolated = os.getenv("MANGA_COLORIZER_ISOLATE_SESSIONS", "").lower() in {"1", "true", "yes"}
     session_id = f.session_state.get("storage_session_id")
     char_root = tmp / "chars" / session_id if isolated else tmp / "chars"
@@ -154,7 +163,7 @@ def main():
     # C: AI mode with no torch installed -> clear error, no crash
     f2 = Fake(); f2.session_state["pages"] = {"p1.png": page}
     f2.pressed = {"Start colouring"}; run_app(f2)
-    assert any(l.startswith("error") and "AI colouring" in l for l in f2.log), f2.log
+    assert any(l.startswith("error") and "model setup is incomplete" in l for l in f2.log), f2.log
     print("C AI-unavailable path OK:", [l for l in f2.log if l.startswith("error")][0])
 
     # E: delete character

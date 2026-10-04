@@ -111,6 +111,46 @@ with st.sidebar:
         st.warning(f"{_key}: {_msg}")
 
 
+def load_ai_colorizer(status):
+    engine.retry_failed()
+    status.write("Downloading/loading Stable Diffusion, anime ControlNet, and IP-Adapter files. First setup can take several minutes and downloads several GB.")
+    status.write("Keep this app open. The download progress is shown in the terminal running Streamlit.")
+    colorizer, error = engine.get_colorizer("ai")
+    if colorizer is None:
+        status.update(label="AI model setup failed", state="error", expanded=True)
+    else:
+        status.update(label="AI coloring model is ready", state="complete", expanded=False)
+    return colorizer, error
+
+
+def show_ai_model_error(error):
+    details = str(error)
+    if "no file named" in details.lower():
+        st.error("AI model setup is incomplete: a required weight file did not finish downloading.")
+        st.info("With a stable internet connection, click Prepare AI models again. Hugging Face keeps partial downloads in its cache; keep the app open until setup says it is ready.")
+    else:
+        st.error(f"Could not prepare AI models: {details}")
+    with st.expander("Technical details"):
+        st.write(details)
+
+
+if S.backend == "ai":
+    is_model_loaded = getattr(engine, "model_loaded", lambda key: key in engine._obj)
+    if is_model_loaded("diffusion"):
+        st.success("AI coloring model is ready on this device.")
+    else:
+        with st.expander("AI model setup", expanded=True):
+            st.write("AI coloring needs several large model files. They download on the first setup and stay cached on this device afterward.")
+            st.caption("The free hosted app only supports Quick preview. Local AI downloads use your internet connection and may take a while.")
+            if st.button("⬇️ Prepare AI models", key="prepare_ai_models"):
+                with st.status("Preparing AI coloring models...", expanded=True) as model_status:
+                    colorizer, model_error = load_ai_colorizer(model_status)
+                if colorizer is None:
+                    show_ai_model_error(model_error)
+                else:
+                    st.success("AI models are downloaded and ready. You can start coloring.")
+
+
 # ------------------------------------------------------------------ callbacks (run before the page re-renders)
 def cb_save(name):
     ch = CharacterBank(CHARACTER_DIR).chars.get(name)
@@ -366,11 +406,13 @@ with tab_p:
 
 # ------------------------------------------------------------------ TAB 3: colourise
 def do_colour(targets):
-    with st.spinner("Loading models... the first AI run downloads about 6 GB, keep this window open."):
+    if S.backend == "ai":
+        with st.status("Preparing AI coloring...", expanded=True) as model_status:
+            colorizer, err = load_ai_colorizer(model_status)
+    else:
         colorizer, err = engine.get_colorizer(S.backend)
     if colorizer is None:
-        st.error(f"Could not start AI colouring:\n\n{err}")
-        st.info("Fix the problem above (usually a network timeout - just press Start again) or choose 'Quick preview' in the sidebar.")
+        show_ai_model_error(err)
         engine.retry_failed()
         return
     with st.spinner("Preparing characters..."):
