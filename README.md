@@ -1,58 +1,123 @@
-# 🎨 Manga Colorizer
+# Manga Colorizer
 
-Black & white manga in → coloured manga out, with the **same colours for each character on every page**.
-Runs locally in your browser (Streamlit). Works on Apple-Silicon Macs (uses the GPU), NVIDIA GPUs, or CPU (slow).
+A browser-based tool for adding color to black-and-white manga pages. Build a character color guide, review detected panels, and color pages with either a fast local preview or an AI-assisted coloring pipeline.
 
-## 1. Install (once)
+![Manga Colorizer interface](assets/manga-colorizer-ui.png)
+
+## Features
+
+- Add character reference pictures and optional descriptions.
+- Detect and lock character colors for hair, skin, clothing, shoes, and other supported parts.
+- Upload manga pages as PNG, JPG/JPEG, WEBP, BMP, or AVIF images.
+- Upload a PDF, CBZ, or ZIP archive containing supported page images.
+- Detect page panels and speech bubbles, then review character assignments before coloring.
+- Choose a fast palette-based preview or AI coloring with line-art guidance and character references.
+- Download colored pages individually or together as a ZIP archive.
+- Select right-to-left manga reading order or left-to-right order.
+- Run on Apple Silicon (MPS), NVIDIA CUDA, or CPU. CPU processing is supported but can be slow.
+
+## How It Works
+
+1. **Characters:** Add one to four colored reference pictures for each recurring character. Automatic color detection is optional; part colors can also be entered and locked manually.
+2. **Pages & layout:** Upload one or more pages, then analyze them. Review detected panels and character assignments, and correct them where needed.
+3. **Colorise & download:** Run the quick preview or AI coloring mode, then download the finished page or a ZIP.
+
+The AI coloring pipeline uses Stable Diffusion 1.5, an anime line-art ControlNet, and IP-Adapter. Supporting models are used for character detection, reference matching, and clothing/part segmentation. Model files are fetched from Hugging Face on first use and cached locally; the downloads are several gigabytes in total. A stable internet connection is needed for the initial download.
+
+## Requirements
+
+- macOS, Linux, or Windows with Python 3.9 or newer; Python 3.11 is recommended.
+- Internet access for installing packages and downloading AI models.
+- Several gigabytes of free storage for AI model files.
+- For AI coloring, enough system memory to run the selected models. NVIDIA GPUs and Apple Silicon are supported; CPU mode is slower.
+
+Quick preview does not require AI model downloads.
+
+## Run Locally
+
+Clone the repository and enter its directory:
+
 ```bash
+git clone https://github.com/afk-Parth/manga-colorizer.git
 cd manga-colorizer
+```
+
+Create the environment and install dependencies:
+
+```bash
 bash setup.sh
 ```
-If it stops with a network timeout, just run `bash setup.sh` again. Python 3.9+ is required, 3.11 recommended (`brew install python@3.11`).
 
-## 2. Start
+Start the app:
+
 ```bash
 bash run_ui.sh
 ```
-Your browser opens at http://localhost:8501.
 
-## 3. Use it (3 tabs)
-1. **Characters** - add each main character with 1-4 *coloured* pictures of them. Press **Auto-detect from pictures** to read their hair / skin / top / skirt / shoes… colours (fix any colour with the pickers, tick the parts you want locked, Save).
-2. **Pages & layout** - upload pages (images, PDF, CBZ) → **Analyse pages**. The app finds panels, speech bubbles and characters and draws them for you. Fix "who is in each panel" with the dropdowns if needed.
-3. **Colourise & download** - press **Start colouring**. Download each page or a zip.
+Open the local URL printed by Streamlit, usually http://localhost:8501. The first AI run downloads the model files; subsequent runs reuse the local cache. To download models in advance, run:
 
-**Tip:** first run with *Quick preview* (sidebar) - instant, no AI - to check panel/character detection. Then switch to *AI colouring*.
-The first AI run downloads ~6 GB of models (one time). `bash download_models.sh` does that in advance.
-
-## How the colours stay consistent
-| Step | What it does |
-|---|---|
-| Character bank | Stores reference pictures + a colour per body part (hair, skin, top, skirt, pants, dress, shoes, bag…) |
-| Reference conditioning | The character's picture steers the AI (IP-Adapter) and a fixed per-character seed is used |
-| Prompt | Colours are turned into words ("black hair, white top, red skirt") |
-| Colour correction | After colouring, a clothes-segmentation model finds hair/skin/clothes in each character and shifts them to the stored colours |
-| Bubbles | Speech bubbles and lettering are left untouched |
-
-Models used (all downloaded automatically): Stable Diffusion 1.5 + anime line-art ControlNet + IP-Adapter (colouring), OWL-ViT (finds characters), CLIP (names them), SegFormer-B2 clothes (finds hair/clothes). No model is trained by this project.
-
-## No UI? Command line
 ```bash
-source venv/bin/activate
-python -m mc doctor                 # check installation
-python -m mc doctor --models        # download + test every model
-python -m mc run pages/ -o out --quick     # no AI
-python -m mc run pages/ -o out             # AI
+bash download_models.sh
 ```
 
-## Troubleshooting
-- **Timeouts during install/download** → run the same command again; finished parts are kept.
-- **"Out of memory" / very slow** → sidebar: Quality = Fast, tick *Low-memory mode*.
-- **A panel stays black & white** → the page shows which panel failed and why; the rest is still coloured.
-- **Wrong character in a panel** → fix it in tab 2 (dropdown under the page preview).
-- **Colours still drift** → raise *Colour-consistency correction*, make sure the part colours are ticked/saved, use better reference pictures.
+## Using Quick Preview
 
-## Honest limitations
-- Character *naming* uses CLIP similarity - the weakest link. That's why tab 2 lets you correct it in two clicks. Use "Set every panel to…" for single-protagonist chapters.
-- The clothes model was trained on photos of people; it works best on the *coloured output* and on reasonably realistic anime art. On unusual styles it may find nothing → the app then falls back to palette matching.
-- Panel detection is classic image processing: normal layouts are fine, borderless/overlapping layouts may merge panels.
-- Quality is that of Stable Diffusion 1.5 + generic anime ControlNet; heavy screentone can confuse the line extraction.
+Choose **Quick preview** under **Colouring mode** in the sidebar. This mode uses local image processing and a character palette to make a fast flat-color preview. Use it to check page and panel detection before trying AI coloring.
+
+## Settings
+
+- **Quality:** Choose Fast, Balanced, or High. Higher settings use larger images and more inference steps, increasing processing time and memory use.
+- **Reading direction:** Choose right-to-left for manga or left-to-right.
+- **Advanced:** Adjust reference-image influence, line-art influence, color consistency correction, character detection, and memory use.
+- **Low-memory mode:** Reduces memory pressure for AI coloring, at the cost of speed.
+
+## Data and Privacy
+
+When run locally, uploaded pages, character references, and results are processed on your computer. Character data is stored in `characters/`, and generated output is stored under `workspace/output/`. These folders are excluded from Git by `.gitignore`.
+
+If deployed to a hosted server, uploads are sent to that server for processing. Do not upload pages or reference images unless you have the rights to use them and are comfortable with the deployment operator's storage and privacy arrangements. This project does not provide multi-user accounts or a managed privacy/storage policy by itself.
+
+## Troubleshooting
+
+- **First AI run takes a long time:** Model files are large. Check the terminal for download progress and keep the app running until downloads finish.
+- **Model download fails or stalls:** Check the connection to Hugging Face and retry. Partially downloaded files are generally cached and can resume.
+- **Out of memory or slow processing:** Select Fast quality and enable Low-memory mode. On CPU, AI processing may be substantially slower.
+- **A panel remains grayscale:** Check the panel-level status and detection results. Unusual panel layouts or heavy screentone can affect detection and line extraction.
+- **Character assignment is incorrect:** Correct the assignment in **Pages & layout** before coloring.
+- **PDF upload is unavailable:** Install the optional PDF dependency with `source venv/bin/activate && pip install -r requirements-pdf.txt`.
+
+## Command Line
+
+Activate the environment before using the CLI:
+
+```bash
+source venv/bin/activate
+python -m mc doctor
+python -m mc doctor --models
+python -m mc run pages/ -o out --quick
+python -m mc run pages/ -o out
+```
+
+## Development Checks
+
+Run the core test script without downloading models:
+
+```bash
+source venv/bin/activate
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python tests/test_core.py
+```
+
+The UI smoke test exercises the main workflow and includes an AI-unavailable path:
+
+```bash
+source venv/bin/activate
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python tests/smoke_ui.py
+```
+
+## Limitations
+
+- AI model loading and coloring can be slow, especially on CPU.
+- Character matching is an estimate; review assignments before coloring.
+- Automatic panel detection works best with clearly separated, conventional manga panels. Borderless or overlapping layouts may need manual correction.
+- Clothing segmentation may be less accurate on highly stylized artwork; palette-based consistency correction is available as a fallback.
+- Results vary with source image quality, screentone, line art, model availability, and selected settings.
