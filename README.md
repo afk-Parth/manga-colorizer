@@ -77,35 +77,20 @@ When run locally, uploaded pages, character references, and results are processe
 
 If deployed to a hosted server, uploads are sent to that server for processing. Do not upload pages or reference images unless you have the rights to use them and are comfortable with the deployment operator's storage and privacy arrangements. This project does not provide multi-user accounts or a managed privacy/storage policy by itself.
 
-## GPU Server Deployment
+## Free Streamlit Deployment
 
-The full AI workflow needs a CUDA-capable NVIDIA GPU. Streamlit Community Cloud does not provide GPU compute and is not configured for this full AI deployment. The included `Dockerfile` runs the Streamlit app on a GPU host such as RunPod or a CUDA-enabled Linux server. A Community Cloud preview would need a separate lightweight dependency configuration and would not include full AI coloring.
+The repository includes a lightweight `requirements.txt` for Streamlit Community Cloud. Since the free host does not provide a GPU, the app automatically offers **Quick preview** only when AI dependencies are absent. This preview uses local image processing and does not download the AI models. Full AI coloring still requires a paid GPU host or a capable local computer.
 
-Every push to `main` that changes the app or its dependencies triggers [the GPU image workflow](.github/workflows/publish-gpu-image.yml), which builds a Linux image and publishes it to GitHub Container Registry as `ghcr.io/afk-parth/manga-colorizer:latest`. After the first workflow completes, set the published package visibility to **Public** in the GitHub package settings if the GPU provider cannot pull private images.
+1. Sign in to [Streamlit Community Cloud](https://share.streamlit.io/) with the GitHub account that can access this public repository.
+2. Choose **Create app**, select `afk-Parth/manga-colorizer`, branch `main`, and main file path `app.py`.
+3. Deploy the app. The first dependency installation can take a few minutes; the app will run in Quick preview mode.
+4. In the app settings, add this under **Secrets** to isolate uploaded character references and generated files by browser session:
 
-For a RunPod-style GPU pod:
-
-1. Select an NVIDIA GPU with at least 12 GB VRAM recommended for AI coloring. More memory gives better headroom; actual speed depends on the GPU and settings.
-2. Use the container image `ghcr.io/afk-parth/manga-colorizer:latest` and expose HTTP port `8501`.
-3. Attach persistent storage mounted at `/models`, and set `HF_HOME=/models/huggingface` so several gigabytes of model files survive a pod restart.
-4. Set `MANGA_COLORIZER_ACCESS_PASSWORD` in the provider's environment/secrets settings. The container requires this password before starting the app. Do not put the password in source control or share it in issue reports.
-5. Start the pod and open its HTTPS endpoint for port `8501`. The first AI use downloads model files and can take a while.
-
-Hosted mode stores each browser session's character references and generated files in separate directories. These session files live on the container filesystem and are not intended as permanent user storage. Keep only the model cache on persistent storage unless you have a retention and deletion policy. The shared password is a basic access gate, not individual accounts or rate limiting; for a public service, put the app behind provider access controls or an authenticated reverse proxy and monitor GPU usage. Anyone with access to the app can submit image uploads for processing.
-
-To build and run the container yourself on a CUDA-enabled Linux server:
-
-```bash
-docker build -t manga-colorizer .
-mkdir -p model-cache
-docker run --rm --gpus all -p 8501:8501 \
-  -e MANGA_COLORIZER_ACCESS_PASSWORD='set-a-long-private-password' \
-  -e HF_HOME=/models/huggingface \
-  -v "$PWD/model-cache:/models" \
-  manga-colorizer
+```toml
+MANGA_COLORIZER_ISOLATE_SESSIONS = "1"
 ```
 
-Change the example password before exposing the server. Local development with `bash run_ui.sh` does not require a password.
+Uploaded pages are sent to the hosted app for processing. The app limits each uploaded file to 50 MB for the free host. Streamlit Community Cloud storage is not permanent, so download results you want to keep. The public app does not have user accounts; anyone with its URL can upload pages. Avoid private or copyrighted material unless you have permission to use it.
 
 ## Troubleshooting
 

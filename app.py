@@ -26,16 +26,29 @@ st.set_page_config(page_title="Manga Colorizer", page_icon="🎨", layout="wide"
 PRESETS = {"Fast (512 px, 15 steps)": (512, 15), "Balanced (640 px, 20 steps)": (640, 20), "High (768 px, 28 steps)": (768, 28)}
 IMG_TYPES = ["png", "jpg", "jpeg", "webp", "bmp", "avif"]
 ss = st.session_state
+
+
+def app_setting(name: str, default: str = "") -> str:
+    if name in os.environ:
+        return os.environ[name]
+    try:
+        return str(st.secrets.get(name, default))
+    except Exception:
+        return default
+
+
 for _k, _v in (("pages", {}), ("seen", set()), ("analysis", {}), ("results", {}), ("problems", {}), ("up_gen", 0), ("zip", None)):
     if _k not in ss:
         ss[_k] = _v
-ISOLATE_SESSIONS = os.getenv("MANGA_COLORIZER_ISOLATE_SESSIONS", "").lower() in {"1", "true", "yes"}
+AI_READY, AI_MISSING = Engine.ai_installed()
+QUICK_ONLY = app_setting("MANGA_COLORIZER_QUICK_ONLY").lower() in {"1", "true", "yes"} or not AI_READY
+ISOLATE_SESSIONS = app_setting("MANGA_COLORIZER_ISOLATE_SESSIONS").lower() in {"1", "true", "yes"}
 if ISOLATE_SESSIONS:
     ss.setdefault("storage_session_id", uuid.uuid4().hex)
 CHARACTER_DIR = CHAR_DIR / ss["storage_session_id"] if ISOLATE_SESSIONS else CHAR_DIR
 SESSION_OUTPUT_DIR = OUT_DIR / ss["storage_session_id"] if ISOLATE_SESSIONS else OUT_DIR
-ACCESS_PASSWORD = os.getenv("MANGA_COLORIZER_ACCESS_PASSWORD", "")
-PASSWORD_REQUIRED = os.getenv("MANGA_COLORIZER_REQUIRE_PASSWORD", "").lower() in {"1", "true", "yes"}
+ACCESS_PASSWORD = app_setting("MANGA_COLORIZER_ACCESS_PASSWORD")
+PASSWORD_REQUIRED = app_setting("MANGA_COLORIZER_REQUIRE_PASSWORD").lower() in {"1", "true", "yes"}
 if PASSWORD_REQUIRED and not ACCESS_PASSWORD:
     st.error("Server setup required: configure MANGA_COLORIZER_ACCESS_PASSWORD in the deployment environment.")
     st.stop()
@@ -66,7 +79,11 @@ def swatch_html(colors) -> str:
 # ------------------------------------------------------------------ sidebar / settings
 with st.sidebar:
     st.header("⚙️ Settings")
-    mode = st.radio("Colouring mode", ["AI colouring (best quality)", "Quick preview (instant, flat colours)"])
+    if QUICK_ONLY:
+        mode = "Quick preview (instant, flat colours)"
+        st.caption("Quick preview only on this host.")
+    else:
+        mode = st.radio("Colouring mode", ["AI colouring (best quality)", "Quick preview (instant, flat colours)"])
     preset = st.selectbox("Quality", list(PRESETS), index=1)
     rtl = st.radio("Reading direction", ["Right-to-left (manga)", "Left-to-right"]).startswith("Right")
     with st.expander("Advanced"):
