@@ -1,6 +1,6 @@
 """Runs app.py against a fake `streamlit` (real one isn't needed). Catches typos / wrong calls / crashes in every UI path.
    python tests/smoke_ui.py"""
-import sys, tempfile, types
+import os, sys, tempfile, types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -11,6 +11,10 @@ from mc.io_utils import encode_png
 
 
 class RerunSignal(Exception):
+    pass
+
+
+class StopSignal(Exception):
     pass
 
 
@@ -58,6 +62,7 @@ class Fake:
     def empty(self): return Ctx(self)
     def progress(self, v, **k): return Ctx(self)
     def rerun(self): raise RerunSignal()
+    def stop(self): raise StopSignal()
     def cache_resource(self, *a, **k):
         def deco(fn):
             def w(*args):
@@ -107,6 +112,10 @@ def main():
 
     # A: fresh start, no pages / characters, twice (rerun)
     f = Fake(); run_app(f); run_app(f); print("A fresh start OK")
+    isolated = os.getenv("MANGA_COLORIZER_ISOLATE_SESSIONS", "").lower() in {"1", "true", "yes"}
+    session_id = f.session_state.get("storage_session_id")
+    char_root = tmp / "chars" / session_id if isolated else tmp / "chars"
+    output_root = tmp / "out" / session_id if isolated else tmp / "out"
 
     # D: add a character through the form
     f.uploads["Coloured reference images"] = [F("r.png", encode_png(T.ref_image()))]
@@ -114,7 +123,7 @@ def main():
     f.pressed = {"Add character"}
     run_app(f)
     f.pressed = set(); f.uploads = {}
-    assert (tmp / "chars" / "Hero_Girl").exists(), "character not stored"
+    assert (char_root / "Hero_Girl").exists(), "character not stored"
     print("D add character OK", [l for l in f.log if l.startswith("success")][-1:])
 
     # B: pages + fake models -> analyse -> quick colour -> results screen
@@ -129,7 +138,7 @@ def main():
     f.pressed = {"Start colouring"}; run_app(f)
     assert set(f.session_state["results"]) == {"p1.png", "p2.png"} and f.session_state["zip"], "colouring failed"
     f.pressed = set(); run_app(f)       # results screen
-    assert "download_button" in f.log and (tmp / "out" / "p1.png").exists()
+    assert "download_button" in f.log and (output_root / "p1.png").exists()
     print("B analyse + colour + results OK")
 
     # character-card callbacks
@@ -137,7 +146,7 @@ def main():
     assert f.session_state.get("pon_Hero_Girl_hair") is True, "auto-detect did not fill parts"
     f.pressed = {"Save"}; run_app(f)
     from mc.bank import CharacterBank
-    assert "hair" in CharacterBank(tmp / "chars").chars["Hero_Girl"].parts
+    assert "hair" in CharacterBank(char_root).chars["Hero_Girl"].parts
     f.pressed = {"Apply to all"}; f.session_state["bulk"] = ["Hero_Girl"]; run_app(f)
     f.pressed = {"Remove all pages"}; run_app(f); assert not f.session_state["pages"]
     print("callbacks OK")
@@ -150,8 +159,38 @@ def main():
 
     # E: delete character
     f.pressed = {"Delete"}; run_app(f)
-    assert "Hero_Girl" not in CharacterBank(tmp / "chars").chars
+    assert "Hero_Girl" not in CharacterBank(char_root).chars
     print("E delete OK")
+
+    # F: GPU container requires its configured access password
+    previous_required = os.environ.get("MANGA_COLORIZER_REQUIRE_PASSWORD")
+    previous_password = os.environ.get("MANGA_COLORIZER_ACCESS_PASSWORD")
+    os.environ["MANGA_COLORIZER_REQUIRE_PASSWORD"] = "1"
+    os.environ.pop("MANGA_COLORIZER_ACCESS_PASSWORD", None)
+    try:
+        locked = Fake()
+        try:
+            run_app(locked)
+        except StopSignal:
+            pass
+        else:
+            raise AssertionError("deployment must stop if required password is missing")
+        os.environ["MANGA_COLORIZER_ACCESS_PASSWORD"] = "test-password"
+        locked = Fake()
+        locked.texts["Server access password"] = "test-password"
+        locked.pressed = {"Continue"}
+        run_app(locked)
+        assert locked.session_state.get("authenticated") is True
+    finally:
+        if previous_required is None:
+            os.environ.pop("MANGA_COLORIZER_REQUIRE_PASSWORD", None)
+        else:
+            os.environ["MANGA_COLORIZER_REQUIRE_PASSWORD"] = previous_required
+        if previous_password is None:
+            os.environ.pop("MANGA_COLORIZER_ACCESS_PASSWORD", None)
+        else:
+            os.environ["MANGA_COLORIZER_ACCESS_PASSWORD"] = previous_password
+    print("F deployment password gate OK")
     print("UI SMOKE TEST PASSED")
 
 

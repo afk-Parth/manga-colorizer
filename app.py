@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import io
+import hmac
+import os
 import time
+import uuid
 import zipfile
 from pathlib import Path
 
@@ -26,6 +29,27 @@ ss = st.session_state
 for _k, _v in (("pages", {}), ("seen", set()), ("analysis", {}), ("results", {}), ("problems", {}), ("up_gen", 0), ("zip", None)):
     if _k not in ss:
         ss[_k] = _v
+ISOLATE_SESSIONS = os.getenv("MANGA_COLORIZER_ISOLATE_SESSIONS", "").lower() in {"1", "true", "yes"}
+if ISOLATE_SESSIONS:
+    ss.setdefault("storage_session_id", uuid.uuid4().hex)
+CHARACTER_DIR = CHAR_DIR / ss["storage_session_id"] if ISOLATE_SESSIONS else CHAR_DIR
+SESSION_OUTPUT_DIR = OUT_DIR / ss["storage_session_id"] if ISOLATE_SESSIONS else OUT_DIR
+ACCESS_PASSWORD = os.getenv("MANGA_COLORIZER_ACCESS_PASSWORD", "")
+PASSWORD_REQUIRED = os.getenv("MANGA_COLORIZER_REQUIRE_PASSWORD", "").lower() in {"1", "true", "yes"}
+if PASSWORD_REQUIRED and not ACCESS_PASSWORD:
+    st.error("Server setup required: configure MANGA_COLORIZER_ACCESS_PASSWORD in the deployment environment.")
+    st.stop()
+if ACCESS_PASSWORD and not ss.get("authenticated", False):
+    st.title("Manga Colorizer")
+    with st.form("server_access"):
+        entered_password = st.text_input("Server access password", type="password")
+        submitted_password = st.form_submit_button("Continue")
+    if submitted_password:
+        if hmac.compare_digest(entered_password, ACCESS_PASSWORD):
+            ss["authenticated"] = True
+            st.rerun()
+        st.error("Incorrect password.")
+    st.stop()
 
 
 @st.cache_resource(show_spinner=False)
@@ -59,7 +83,7 @@ S = Settings(backend="quick" if mode.startswith("Quick") else "ai", size=PRESETS
              ip_scale=ip_scale, control_scale=control_scale, enforce=enforce_s, rtl=rtl, detect_characters=detect_chars,
              use_parts=use_parts, det_threshold=det_thr, clip_threshold=clip_thr, low_memory=low_mem)
 engine = get_engine(low_mem)
-bank = CharacterBank(CHAR_DIR)
+bank = CharacterBank(CHARACTER_DIR)
 
 with st.sidebar:
     st.caption(f"Compute device: **{engine.device}**")
@@ -72,7 +96,7 @@ with st.sidebar:
 
 # ------------------------------------------------------------------ callbacks (run before the page re-renders)
 def cb_save(name):
-    ch = CharacterBank(CHAR_DIR).chars.get(name)
+    ch = CharacterBank(CHARACTER_DIR).chars.get(name)
     if ch is None:
         return
     ch.outfit = str(ss.get(f"outfit_{name}", "")).strip()
@@ -84,7 +108,7 @@ def cb_save(name):
 def cb_detect(name, low_memory):
     eng = get_engine(low_memory)
     eng.retry_failed()
-    ch = CharacterBank(CHAR_DIR).chars.get(name)
+    ch = CharacterBank(CHARACTER_DIR).chars.get(name)
     parser = eng.parser
     if ch is None:
         return
@@ -104,7 +128,7 @@ def cb_detect(name, low_memory):
 
 
 def cb_delete(name):
-    CharacterBank(CHAR_DIR).delete(name)
+    CharacterBank(CHARACTER_DIR).delete(name)
     for k in [k for k in list(ss.keys()) if isinstance(k, str) and (k.startswith(f"pon_{name}_") or k.startswith(f"pcol_{name}_") or k == f"outfit_{name}")]:
         del ss[k]
     ss["_msg"] = ("info", f"Deleted {name}.")
@@ -351,14 +375,14 @@ def do_colour(targets):
         rgb, probs = colorize_page(gray, an, bank, engine, S, colorizer, cb)
         png = encode_png(rgb)
         ss["results"][name] = png
-        OUT_DIR.mkdir(parents=True, exist_ok=True)
-        (OUT_DIR / name).write_bytes(png)
+        SESSION_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        (SESSION_OUTPUT_DIR / name).write_bytes(png)
         if probs:
             ss["problems"][name] = probs
         else:
             ss["problems"].pop(name, None)
     bar.progress(1.0)
-    status.text(f"Done in {int(time.time() - t0)}s. Files are also saved in {OUT_DIR}")
+    status.text(f"Done in {int(time.time() - t0)}s. Files are also saved in {SESSION_OUTPUT_DIR}")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
         for n in sorted(ss["results"], key=natural_key):
